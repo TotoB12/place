@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>TotoB12 Place</title>
+  <link id="favicon" rel="icon" type="image/png" href="/favicon.png">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: auto;
+        }
+
+        canvas {
+            width: 100%;
+            height: auto;
+            border: 1px solid black;
+        }
+
+        #control-panel {
+            margin-top: 15px;
+        }
+
+        @media (min-width: 768px) {
+
+            /* Landscape orientation */
+            .row-landscape {
+                display: flex;
+                justify-content: space-between;
+            }
+
+            #canvas-container {
+                flex: 1;
+                margin-right: 15px;
+            }
+
+            #control-panel {
+                flex: 0 0 150px;
+            }
+
+            #reset-button {
+                width: 100%;
+            }
+
+            #users-connected {
+                margin-top: 15px;
+            }
+        }
+
+        #alert-box {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+        }
+
+        .btn-color {
+            margin-bottom: 5px;
+        }
+    </style>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+
+<body class="container mt-3">
+    <div id="alert-box"></div>
+    <div class="row row-landscape">
+        <div id="canvas-container">
+            <canvas id="canvas" width="640" height="640"></canvas>
+        </div>
+        <div id="control-panel">
+          <div id="color-picker" class="btn-group-vertical">
+            <button class="btn btn-danger btn-color" style="box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);" data-color="[255, 0, 0]">Red</button>
+                <button class="btn btn-primary btn-color" data-color="[0, 0, 255]">Blue</button>
+                <button class="btn btn-success btn-color" data-color="[0, 255, 0]">Green</button>
+                <button class="btn btn-warning btn-color" data-color="[255, 193, 7]">Yellow</button>
+                <button class="btn btn-dark btn-color" data-color="[0, 0, 0]">Black</button>
+                <button class="btn btn-light btn-color" data-color="[255, 255, 255]">White</button>
+            </div>
+          <div id="chatbox-container" class="mt-3">
+              <div id="chat-messages" style="height: 150px; overflow-y: scroll;"></div>
+              <input type="text" id="chat-input" class="form-control mt-2" placeholder="Type a message...">
+          </div>
+            <button id="reset-button" class="btn btn-danger mt-3">Reset Canvas</button>
+          <button id="save-button" class="btn btn-success mt-3">Save</button>
+          <button id="load-button" class="btn btn-info mt-3">Load</button>
+          <input type="file" id="file-input" hidden accept=".txt">
+            <div id="users-connected" class="mt-3">
+                Users Connected: <span id="users-count">0</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var canvas = document.getElementById('canvas');
+        var ctx = canvas.getContext('2d');
+        var socket = io.connect('https://' + document.domain + ':' + location.port);
+        var currentColor = [0, 0, 0]; // Default color: Black
+
+      document.getElementById('color-picker').addEventListener('click', function(event) {
+          if (event.target.tagName === 'BUTTON') {
+              // Update the current color
+              currentColor = JSON.parse(event.target.getAttribute('data-color'));
+
+              // Update button styles to reflect the current selection
+              var buttons = document.querySelectorAll('#color-picker button');
+              buttons.forEach(function(button) {
+                  button.classList.remove('active');
+              });
+              event.target.classList.add('active');  // Highlight the selected button
+          }
+      });
+
+      function updateFavicon() {
+          var favicon = document.getElementById('favicon');
+          favicon.href = '/favicon.png?' + new Date().getTime();  // Cache busting
+      }
+
+      setInterval(updateFavicon, 60000);  // Update every 60 seconds
+
+      document.getElementById('save-button').addEventListener('click', function() {
+          window.location.href = '/download_canvas';
+      });
+
+      var canvasPassword = '';  // This variable will store the password
+
+      document.getElementById('load-button').addEventListener('click', function() {
+          var password = prompt('Please enter the password to load a new canvas:');
+          if (password) {
+              canvasPassword = password;  // Store the password
+              document.getElementById('file-input').click();
+          }
+      });
+
+      document.getElementById('file-input').addEventListener('change', function(event) {
+          var file = event.target.files[0];
+          if (file && file.size <= 80000) {  // Check file size (80 KB)
+              var reader = new FileReader();
+            reader.onload = function(e) {
+                var content = e.target.result;
+                socket.emit('load_canvas', {password: canvasPassword, content: content});
+            };
+            reader.readAsText(file);
+          } else {
+              alert('File is too large or not selected.');
+          }
+      });
+
+      socket.on('notification', function(data) {
+          alert(data.message);
+      });
+
+        socket.on('canvas_state', function(data) {
+            for (var i = 0; i < data.state.length; i++) {
+                var y = Math.floor(i / 64);
+                var x = i % 64;
+                ctx.fillStyle = `rgb(${data.state[i].join(',')})`;
+                ctx.fillRect(x * 10, y * 10, 10, 10);
+            }
+        });
+
+      document.getElementById('color-picker').addEventListener('click', function(event) {
+          if (event.target.tagName === 'BUTTON') {
+              currentColor = JSON.parse(event.target.getAttribute('data-color'));
+
+              var buttons = document.querySelectorAll('#color-picker button');
+              buttons.forEach(function(button) {
+                  button.style.boxShadow = ''; // Reset style for all buttons
+              });
+              event.target.style.boxShadow = `0 0 10px rgba(${currentColor.join(',')}, 0.5)`; // Highlight the selected button
+          }
+      });
+
+
+        function getCanvasScale() {
+            var rect = canvas.getBoundingClientRect();
+            return {
+                x: canvas.width / rect.width,
+                y: canvas.height / rect.height
+            };
+        }
+
+        canvas.addEventListener('click', function(event) {
+            var scale = getCanvasScale();
+            var x = Math.floor((event.offsetX * scale.x) / 10);
+            var y = Math.floor((event.offsetY * scale.y) / 10);
+            socket.emit('draw_pixel', {
+                x: x,
+                y: y,
+                color: currentColor
+            });
+        });
+
+        socket.on('update_pixel', function(data) {
+            ctx.fillStyle = `rgb(${data.color.join(',')})`;
+            ctx.fillRect(data.x * 10, data.y * 10, 10, 10);
+        });
+
+        document.getElementById('reset-button').addEventListener('click', function() {
+            var password = prompt('Please enter the password to reset the canvas:');
+            if (password) {
+                socket.emit('reset_canvas', {
+                    password: password
+                });
+            }
+        });
+
+        socket.on('notification', function(data) {
+            var alertBox = document.getElementById('alert-box');
+            alertBox.innerHTML = `<div class="alert alert-${data.category}">${data.message}</div>`;
+            setTimeout(function() {
+                alertBox.innerHTML = '';
+            }, 3000);
+        });
+
+        socket.on('user_count', function(data) {
+            document.getElementById('users-count').textContent = data.count;
+        });
+
+      document.getElementById('chat-input').addEventListener('keypress', function(event) {
+          if (event.key === 'Enter') {
+              var message = event.target.value;
+              socket.emit('send_message', {text: message});
+              event.target.value = '';
+          }
+      });
+
+      socket.on('receive_message', function(data) {
+          var chatMessages = document.getElementById('chat-messages');
+          chatMessages.innerHTML += `<div>${data.text}</div>`;
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+      });
+
+      // Load chat history when the user connects
+      fetch('/get_chat_history')
+          .then(response => response.json())
+          .then(messages => {
+              var chatMessages = document.getElementById('chat-messages');
+              messages.forEach(function(message) {
+                  chatMessages.innerHTML += `<div>${message.text}</div>`;
+              });
+              chatMessages.scrollTop = chatMessages.scrollHeight;
+          });
+    </script>
+</body>
+
+</html>
