@@ -235,7 +235,6 @@
           chatMessages.scrollTop = chatMessages.scrollHeight;
       });
 
-      // Load chat history when the user connects
       fetch('/get_chat_history')
           .then(response => response.json())
           .then(messages => {
